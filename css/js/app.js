@@ -15,12 +15,76 @@ const fechaLegible = () => {
 
 const horaActual = () => new Date().toLocaleTimeString("es-CO", { hour12: false });
 
-// Inicializar fechas
-document.getElementById("metricFecha").textContent = fechaLegible();
-const filtroFecha = document.getElementById("filtroFecha");
-filtroFecha.value = fechaHoy();
+// ---------- Inicialización de Eventos al Cargar el DOM ----------
+document.addEventListener("DOMContentLoaded", () => {
 
-// ---------- Reproductor de Sonidos Sintéticos (Web Audio API) ----------
+  // Inicializar fecha
+  const elMetricFecha = document.getElementById("metricFecha");
+  if (elMetricFecha) elMetricFecha.textContent = fechaLegible();
+  
+  const filtroFecha = document.getElementById("filtroFecha");
+  if (filtroFecha) filtroFecha.value = fechaHoy();
+
+  // ---------- Navegación por Pestañas (Tabs) ----------
+  const tabBtns = document.querySelectorAll(".tab-btn");
+  const panelSecciones = document.querySelectorAll(".panel-seccion");
+
+  tabBtns.forEach(btn => {
+    btn.addEventListener("click", () => {
+      tabBtns.forEach(b => b.classList.remove("activo"));
+      panelSecciones.forEach(s => s.classList.remove("activo"));
+
+      btn.classList.add("activo");
+      const targetId = btn.getAttribute("data-target");
+      const targetEl = document.getElementById(targetId);
+      if (targetEl) targetEl.classList.add("activo");
+    });
+  });
+
+  // ---------- Event Listeners Formulario y Filtros ----------
+  const btnAgregar = document.getElementById("btnAgregar");
+  if (btnAgregar) btnAgregar.addEventListener("click", agregarEstudiante);
+
+  if (filtroFecha) filtroFecha.addEventListener("change", renderAsistencias);
+
+  const buscarEstudiante = document.getElementById("buscarEstudiante");
+  if (buscarEstudiante) buscarEstudiante.addEventListener("input", renderEstudiantes);
+
+  const btnExportarHoy = document.getElementById("btnExportarHoy");
+  if (btnExportarHoy) {
+    btnExportarHoy.addEventListener("click", () => {
+      const hoy = filtroFecha ? filtroFecha.value : fechaHoy();
+      const lista = leer("asistencias").filter(a => a.fecha === hoy);
+      exportarCSV(lista, `Asistencias_${hoy}`);
+    });
+  }
+
+  const btnExportarTodo = document.getElementById("btnExportarTodo");
+  if (btnExportarTodo) {
+    btnExportarTodo.addEventListener("click", () => {
+      exportarCSV(leer("asistencias"), "Historial_General_Asistencia");
+    });
+  }
+
+  const inputLector = document.getElementById("inputLector");
+  if (inputLector) {
+    inputLector.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        const cod = inputLector.value.trim().toUpperCase();
+        inputLector.value = "";
+        if (cod) registrarAsistencia(cod);
+      }
+    });
+  }
+
+  // Cargar datos iniciales
+  actualizarTodo();
+
+  // Iniciar cámara de forma segura
+  iniciarCamara();
+});
+
+// ---------- Reproductor de Sonidos Sintéticos ----------
 function reproducirSonido(tipo) {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -30,35 +94,18 @@ function reproducirSonido(tipo) {
     gain.connect(ctx.destination);
 
     if (tipo === 'exito') {
-      osc.frequency.value = 880; // Nota La (agudo)
+      osc.frequency.value = 880;
       gain.gain.setValueAtTime(0.1, ctx.currentTime);
       osc.start();
       osc.stop(ctx.currentTime + 0.15);
     } else {
-      osc.frequency.value = 220; // Tono grave (error/advertencia)
+      osc.frequency.value = 220;
       gain.gain.setValueAtTime(0.15, ctx.currentTime);
       osc.start();
       osc.stop(ctx.currentTime + 0.3);
     }
-  } catch (e) {
-    // Si la API de audio no está soportada, continúa normalmente
-  }
+  } catch (e) {}
 }
-
-// ---------- Navegación por Pestañas (Tabs) ----------
-const tabBtns = document.querySelectorAll(".tab-btn");
-const panelSecciones = document.querySelectorAll(".panel-seccion");
-
-tabBtns.forEach(btn => {
-  btn.addEventListener("click", () => {
-    tabBtns.forEach(b => b.classList.remove("activo"));
-    panelSecciones.forEach(s => s.classList.remove("activo"));
-
-    btn.classList.add("activo");
-    const targetId = btn.getAttribute("data-target");
-    document.getElementById(targetId).classList.add("activo");
-  });
-});
 
 // ---------- Métricas ----------
 function actualizarMetricas() {
@@ -66,16 +113,22 @@ function actualizarMetricas() {
   const asistencias = leer("asistencias");
   const hoy = fechaHoy();
 
-  document.getElementById("metricTotalEst").textContent = estudiantes.length;
-  const presentesHoy = asistencias.filter(a => a.fecha === hoy).length;
-  document.getElementById("metricPresentes").textContent = presentesHoy;
+  const totalEst = document.getElementById("metricTotalEst");
+  const presHoy = document.getElementById("metricPresentes");
+
+  if (totalEst) totalEst.textContent = estudiantes.length;
+  if (presHoy) presHoy.textContent = asistencias.filter(a => a.fecha === hoy).length;
 }
 
-// ---------- Gestión y Búsqueda de Estudiantes ----------
+// ---------- Gestión de Estudiantes ----------
 function agregarEstudiante() {
-  const codigo = document.getElementById("codigo").value.trim().toUpperCase();
-  const nombre = document.getElementById("nombre").value.trim();
-  const grado = document.getElementById("grado").value.trim();
+  const codigoInput = document.getElementById("codigo");
+  const nombreInput = document.getElementById("nombre");
+  const gradoInput = document.getElementById("grado");
+
+  const codigo = codigoInput ? codigoInput.value.trim().toUpperCase() : "";
+  const nombre = nombreInput ? nombreInput.value.trim() : "";
+  const grado = gradoInput ? gradoInput.value.trim() : "";
 
   if (!codigo || !nombre) {
     return alert("Debe rellenar el código y el nombre del estudiante.");
@@ -89,7 +142,10 @@ function agregarEstudiante() {
   estudiantes.push({ codigo, nombre, grado });
   guardar("estudiantes", estudiantes);
 
-  ["codigo", "nombre", "grado"].forEach(id => document.getElementById(id).value = "");
+  if (codigoInput) codigoInput.value = "";
+  if (nombreInput) nombreInput.value = "";
+  if (gradoInput) gradoInput.value = "";
+
   actualizarTodo();
   alert("Estudiante registrado con éxito.");
 }
@@ -104,8 +160,11 @@ function eliminarEstudiante(codigo) {
 
 function renderEstudiantes() {
   const tbody = document.getElementById("tablaEstudiantes");
+  if (!tbody) return;
   tbody.innerHTML = "";
-  const filtro = document.getElementById("buscarEstudiante").value.trim().toLowerCase();
+
+  const buscarInput = document.getElementById("buscarEstudiante");
+  const filtro = buscarInput ? buscarInput.value.trim().toLowerCase() : "";
   
   const estudiantes = leer("estudiantes").filter(e => 
     e.nombre.toLowerCase().includes(filtro) || e.codigo.toLowerCase().includes(filtro)
@@ -128,8 +187,6 @@ function renderEstudiantes() {
   });
 }
 
-document.getElementById("buscarEstudiante").addEventListener("input", renderEstudiantes);
-
 // ---------- Registro de Asistencia ----------
 function registrarAsistencia(codigo) {
   const estudiantes = leer("estudiantes");
@@ -138,12 +195,14 @@ function registrarAsistencia(codigo) {
 
   if (!est) {
     reproducirSonido('error');
-    statusCard.className = "status-display error";
-    statusCard.innerHTML = `
-      <div class="status-icon-big">❌</div>
-      <h4>Código No Encontrado</h4>
-      <p>El código <strong>${codigo}</strong> no pertenece a ningún alumno registrado.</p>
-    `;
+    if (statusCard) {
+      statusCard.className = "status-display error";
+      statusCard.innerHTML = `
+        <div class="status-icon-big">❌</div>
+        <h4>Código No Encontrado</h4>
+        <p>El código <strong>${codigo}</strong> no pertenece a ningún alumno registrado.</p>
+      `;
+    }
     return;
   }
 
@@ -152,12 +211,14 @@ function registrarAsistencia(codigo) {
 
   if (asistencias.some(a => a.codigo === codigo && a.fecha === hoy)) {
     reproducirSonido('error');
-    statusCard.className = "status-display warning";
-    statusCard.innerHTML = `
-      <div class="status-icon-big">⚠️</div>
-      <h4>Acceso Duplicado</h4>
-      <p><strong>${est.nombre}</strong><br>Ya registró su ingreso el día de hoy.</p>
-    `;
+    if (statusCard) {
+      statusCard.className = "status-display warning";
+      statusCard.innerHTML = `
+        <div class="status-icon-big">⚠️</div>
+        <h4>Acceso Duplicado</h4>
+        <p><strong>${est.nombre}</strong><br>Ya registró su ingreso el día de hoy.</p>
+      `;
+    }
     return;
   }
 
@@ -166,12 +227,14 @@ function registrarAsistencia(codigo) {
   guardar("asistencias", asistencias);
 
   reproducirSonido('exito');
-  statusCard.className = "status-display success";
-  statusCard.innerHTML = `
-    <div class="status-icon-big">✅</div>
-    <h4>Asistencia Registrada</h4>
-    <p><strong>${est.nombre}</strong><br>Grado: ${est.grado || 'N/A'}<br>Hora: ${hora}</p>
-  `;
+  if (statusCard) {
+    statusCard.className = "status-display success";
+    statusCard.innerHTML = `
+      <div class="status-icon-big">✅</div>
+      <h4>Asistencia Registrada</h4>
+      <p><strong>${est.nombre}</strong><br>Grado: ${est.grado || 'N/A'}<br>Hora: ${hora}</p>
+    `;
+  }
 
   actualizarTodo();
 }
@@ -179,8 +242,11 @@ function registrarAsistencia(codigo) {
 // ---------- Tablas Asistencia / Historial ----------
 function renderAsistencias() {
   const tbody = document.getElementById("tablaAsistencia");
+  if (!tbody) return;
   tbody.innerHTML = "";
-  const fechaFiltro = filtroFecha.value;
+  
+  const filtroFecha = document.getElementById("filtroFecha");
+  const fechaFiltro = filtroFecha ? filtroFecha.value : fechaHoy();
   const lista = leer("asistencias").filter(a => a.fecha === fechaFiltro);
 
   if (lista.length === 0) {
@@ -202,6 +268,7 @@ function renderAsistencias() {
 
 function renderHistorial() {
   const tbody = document.getElementById("tablaHistorial");
+  if (!tbody) return;
   tbody.innerHTML = "";
   const historial = leer("asistencias");
 
@@ -222,7 +289,7 @@ function renderHistorial() {
   });
 }
 
-// ---------- Exportación a Excel / CSV ----------
+// ---------- Exportación a CSV ----------
 function exportarCSV(datos, nombreArchivo) {
   if (datos.length === 0) return alert("No hay datos para exportar.");
 
@@ -241,38 +308,39 @@ function exportarCSV(datos, nombreArchivo) {
   document.body.removeChild(link);
 }
 
-document.getElementById("btnExportarHoy").addEventListener("click", () => {
-  const hoy = filtroFecha.value;
-  const lista = leer("asistencias").filter(a => a.fecha === hoy);
-  exportarCSV(lista, `Asistencias_${hoy}`);
-});
-
-document.getElementById("btnExportarTodo").addEventListener("click", () => {
-  exportarCSV(leer("asistencias"), "Historial_General_Asistencia");
-});
-
 // ---------- Carnets y Modal ----------
 function abrirModalCarnet(codigo) {
   const est = leer("estudiantes").find(e => e.codigo === codigo);
   if (!est) return;
 
-  document.getElementById("modalNombre").textContent = est.nombre;
-  document.getElementById("modalGrado").textContent = `Grado: ${est.grado || 'N/A'}`;
-  document.getElementById("modalCodigo").textContent = est.codigo;
+  const mNombre = document.getElementById("modalNombre");
+  const mGrado = document.getElementById("modalGrado");
+  const mCodigo = document.getElementById("modalCodigo");
+
+  if (mNombre) mNombre.textContent = est.nombre;
+  if (mGrado) mGrado.textContent = `Grado: ${est.grado || 'N/A'}`;
+  if (mCodigo) mCodigo.textContent = est.codigo;
 
   const qrContainer = document.getElementById("modalQR");
-  qrContainer.innerHTML = "";
-  new QRCode(qrContainer, { text: est.codigo, width: 120, height: 120 });
+  if (qrContainer) {
+    qrContainer.innerHTML = "";
+    if (typeof QRCode !== "undefined") {
+      new QRCode(qrContainer, { text: est.codigo, width: 120, height: 120 });
+    }
+  }
 
-  document.getElementById("modalCarnet").classList.add("activo");
+  const modal = document.getElementById("modalCarnet");
+  if (modal) modal.classList.add("activo");
 }
 
 function cerrarModal() {
-  document.getElementById("modalCarnet").classList.remove("activo");
+  const modal = document.getElementById("modalCarnet");
+  if (modal) modal.classList.remove("activo");
 }
 
 function renderCarnets() {
   const container = document.getElementById("gridCarnets");
+  if (!container) return;
   container.innerHTML = "";
   const estudiantes = leer("estudiantes");
 
@@ -292,38 +360,39 @@ function renderCarnets() {
     `;
     container.appendChild(div);
 
-    new QRCode(document.getElementById(`qr-gen-${est.codigo}`), {
-      text: est.codigo,
-      width: 90,
-      height: 90
-    });
+    if (typeof QRCode !== "undefined") {
+      new QRCode(document.getElementById(`qr-gen-${est.codigo}`), {
+        text: est.codigo,
+        width: 90,
+        height: 90
+      });
+    }
   });
 }
 
-// ---------- Cámara ----------
+// ---------- Inicialización de Cámara Segura (Try / Catch) ----------
 function iniciarCamara() {
-  const html5QrCode = new Html5QrcodeScanner("reader", { 
-    fps: 10, 
-    qrbox: { width: 230, height: 230 } 
-  }, false);
+  const readerEl = document.getElementById("reader");
+  if (!readerEl) return;
 
-  html5QrCode.render((decodedText) => {
-    registrarAsistencia(decodedText.trim().toUpperCase());
-  }, (error) => {});
-}
+  try {
+    if (typeof Html5QrcodeScanner !== "undefined") {
+      const html5QrCode = new Html5QrcodeScanner("reader", { 
+        fps: 10, 
+        qrbox: { width: 230, height: 230 } 
+      }, false);
 
-// ---------- Sincronización ----------
-document.getElementById("btnAgregar").addEventListener("click", agregarEstudiante);
-filtroFecha.addEventListener("change", renderAsistencias);
-
-const inputLector = document.getElementById("inputLector");
-inputLector.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
-    const cod = inputLector.value.trim().toUpperCase();
-    inputLector.value = "";
-    if (cod) registrarAsistencia(cod);
+      html5QrCode.render((decodedText) => {
+        registrarAsistencia(decodedText.trim().toUpperCase());
+      }, (error) => {});
+    }
+  } catch (err) {
+    console.warn("No se pudo iniciar la cámara (puede requerir HTTPS o un servidor web local):", err);
+    readerEl.innerHTML = `<p style="text-align:center; padding:1rem; color:#64748b; font-size:0.85rem;">
+      📷 Lector manual activado. (Para usar la cámara web, publica el proyecto en GitHub Pages o usa un servidor local).
+    </p>`;
   }
-});
+}
 
 function actualizarTodo() {
   actualizarMetricas();
@@ -332,6 +401,3 @@ function actualizarTodo() {
   renderHistorial();
   renderCarnets();
 }
-
-actualizarTodo();
-iniciarCamara();
