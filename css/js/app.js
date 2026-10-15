@@ -15,10 +15,10 @@ const fechaLegible = () => {
 
 const horaActual = () => new Date().toLocaleTimeString("es-CO", { hour12: false });
 
-// ---------- Inicialización de Eventos al Cargar el DOM ----------
+// ---------- Inicialización General al Cargar el DOM ----------
 document.addEventListener("DOMContentLoaded", () => {
-
-  // Inicializar fecha
+  
+  // Asignar fechas por defecto
   const elMetricFecha = document.getElementById("metricFecha");
   if (elMetricFecha) elMetricFecha.textContent = fechaLegible();
   
@@ -41,15 +41,23 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // ---------- Event Listeners Formulario y Filtros ----------
+  // ---------- Botón Agregar Estudiante ----------
   const btnAgregar = document.getElementById("btnAgregar");
-  if (btnAgregar) btnAgregar.addEventListener("click", agregarEstudiante);
+  if (btnAgregar) {
+    btnAgregar.addEventListener("click", agregarEstudiante);
+  }
 
-  if (filtroFecha) filtroFecha.addEventListener("change", renderAsistencias);
+  // ---------- Filtro y Búsqueda ----------
+  if (filtroFecha) {
+    filtroFecha.addEventListener("change", renderAsistencias);
+  }
 
   const buscarEstudiante = document.getElementById("buscarEstudiante");
-  if (buscarEstudiante) buscarEstudiante.addEventListener("input", renderEstudiantes);
+  if (buscarEstudiante) {
+    buscarEstudiante.addEventListener("input", renderEstudiantes);
+  }
 
+  // ---------- Botones de Exportación CSV ----------
   const btnExportarHoy = document.getElementById("btnExportarHoy");
   if (btnExportarHoy) {
     btnExportarHoy.addEventListener("click", () => {
@@ -66,6 +74,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // ---------- Lector / Input de Código ----------
   const inputLector = document.getElementById("inputLector");
   if (inputLector) {
     inputLector.addEventListener("keydown", (e) => {
@@ -77,14 +86,11 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Cargar datos iniciales
+  // Cargar tablas y estadísticas iniciales
   actualizarTodo();
-
-  // Iniciar cámara de forma segura
-  iniciarCamara();
 });
 
-// ---------- Reproductor de Sonidos Sintéticos ----------
+// ---------- Reproductor de Audio Sintético ----------
 function reproducirSonido(tipo) {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -131,12 +137,14 @@ function agregarEstudiante() {
   const grado = gradoInput ? gradoInput.value.trim() : "";
 
   if (!codigo || !nombre) {
-    return alert("Debe rellenar el código y el nombre del estudiante.");
+    alert("Debe rellenar al menos el código y el nombre del estudiante.");
+    return;
   }
 
   let estudiantes = leer("estudiantes");
   if (estudiantes.some(e => e.codigo === codigo)) {
-    return alert("Ya existe un alumno registrado con este código.");
+    alert("Ya existe un alumno registrado con este código.");
+    return;
   }
 
   estudiantes.push({ codigo, nombre, grado });
@@ -147,7 +155,7 @@ function agregarEstudiante() {
   if (gradoInput) gradoInput.value = "";
 
   actualizarTodo();
-  alert("Estudiante registrado con éxito.");
+  alert("¡Estudiante registrado con éxito!");
 }
 
 function eliminarEstudiante(codigo) {
@@ -157,6 +165,8 @@ function eliminarEstudiante(codigo) {
     actualizarTodo();
   }
 }
+
+window.eliminarEstudiante = eliminarEstudiante; // Exponer globalmente
 
 function renderEstudiantes() {
   const tbody = document.getElementById("tablaEstudiantes");
@@ -171,7 +181,7 @@ function renderEstudiantes() {
   );
 
   if (estudiantes.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;">No se encontraron estudiantes.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;">No se encontraron estudiantes registrados.</td></tr>`;
     return;
   }
 
@@ -181,7 +191,7 @@ function renderEstudiantes() {
         <td><strong>${est.codigo}</strong></td>
         <td>${est.nombre}</td>
         <td>${est.grado || 'N/A'}</td>
-        <td><button onclick="eliminarEstudiante('${est.codigo}')" class="btn-danger">Eliminar</button></td>
+        <td><button onclick="eliminarEstudiante('${est.codigo}')" class="btn-danger" type="button">Eliminar</button></td>
       </tr>
     `;
   });
@@ -239,7 +249,7 @@ function registrarAsistencia(codigo) {
   actualizarTodo();
 }
 
-// ---------- Tablas Asistencia / Historial ----------
+// ---------- Tablas de Asistencia e Historial ----------
 function renderAsistencias() {
   const tbody = document.getElementById("tablaAsistencia");
   if (!tbody) return;
@@ -291,7 +301,10 @@ function renderHistorial() {
 
 // ---------- Exportación a CSV ----------
 function exportarCSV(datos, nombreArchivo) {
-  if (datos.length === 0) return alert("No hay datos para exportar.");
+  if (datos.length === 0) {
+    alert("No hay datos disponibles para exportar.");
+    return;
+  }
 
   let csvContent = "\uFEFFCódigo,Nombre,Fecha,Hora\n";
   datos.forEach(row => {
@@ -308,36 +321,7 @@ function exportarCSV(datos, nombreArchivo) {
   document.body.removeChild(link);
 }
 
-// ---------- Carnets y Modal ----------
-function abrirModalCarnet(codigo) {
-  const est = leer("estudiantes").find(e => e.codigo === codigo);
-  if (!est) return;
-
-  const mNombre = document.getElementById("modalNombre");
-  const mGrado = document.getElementById("modalGrado");
-  const mCodigo = document.getElementById("modalCodigo");
-
-  if (mNombre) mNombre.textContent = est.nombre;
-  if (mGrado) mGrado.textContent = `Grado: ${est.grado || 'N/A'}`;
-  if (mCodigo) mCodigo.textContent = est.codigo;
-
-  const qrContainer = document.getElementById("modalQR");
-  if (qrContainer) {
-    qrContainer.innerHTML = "";
-    if (typeof QRCode !== "undefined") {
-      new QRCode(qrContainer, { text: est.codigo, width: 120, height: 120 });
-    }
-  }
-
-  const modal = document.getElementById("modalCarnet");
-  if (modal) modal.classList.add("activo");
-}
-
-function cerrarModal() {
-  const modal = document.getElementById("modalCarnet");
-  if (modal) modal.classList.remove("activo");
-}
-
+// ---------- Renderizar Carnets ----------
 function renderCarnets() {
   const container = document.getElementById("gridCarnets");
   if (!container) return;
@@ -345,7 +329,7 @@ function renderCarnets() {
   const estudiantes = leer("estudiantes");
 
   if (estudiantes.length === 0) {
-    container.innerHTML = `<p style="grid-column: 1/-1; text-align:center;">No hay alumnos para mostrar carnets.</p>`;
+    container.innerHTML = `<p style="grid-column: 1/-1; text-align:center;">No hay alumnos registrados para mostrar carnets.</p>`;
     return;
   }
 
@@ -354,46 +338,14 @@ function renderCarnets() {
     div.className = "carnet-card";
     div.innerHTML = `
       <h5>${est.nombre}</h5>
-      <p>${est.codigo} • ${est.grado || ''}</p>
-      <div id="qr-gen-${est.codigo}" class="qr-box-mini"></div>
-      <button onclick="abrirModalCarnet('${est.codigo}')" class="btn-secondary">🖨️ Ver Carnet</button>
+      <p>${est.grado || 'Sin curso'}</p>
+      <div class="codigo-badge-card">${est.codigo}</div>
     `;
     container.appendChild(div);
-
-    if (typeof QRCode !== "undefined") {
-      new QRCode(document.getElementById(`qr-gen-${est.codigo}`), {
-        text: est.codigo,
-        width: 90,
-        height: 90
-      });
-    }
   });
 }
 
-// ---------- Inicialización de Cámara Segura (Try / Catch) ----------
-function iniciarCamara() {
-  const readerEl = document.getElementById("reader");
-  if (!readerEl) return;
-
-  try {
-    if (typeof Html5QrcodeScanner !== "undefined") {
-      const html5QrCode = new Html5QrcodeScanner("reader", { 
-        fps: 10, 
-        qrbox: { width: 230, height: 230 } 
-      }, false);
-
-      html5QrCode.render((decodedText) => {
-        registrarAsistencia(decodedText.trim().toUpperCase());
-      }, (error) => {});
-    }
-  } catch (err) {
-    console.warn("No se pudo iniciar la cámara (puede requerir HTTPS o un servidor web local):", err);
-    readerEl.innerHTML = `<p style="text-align:center; padding:1rem; color:#64748b; font-size:0.85rem;">
-      📷 Lector manual activado. (Para usar la cámara web, publica el proyecto en GitHub Pages o usa un servidor local).
-    </p>`;
-  }
-}
-
+// ---------- Sincronización Global ----------
 function actualizarTodo() {
   actualizarMetricas();
   renderEstudiantes();
