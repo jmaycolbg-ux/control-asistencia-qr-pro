@@ -93,3 +93,10 @@ td { overflow-wrap: anywhere; }
   .carnets-container { grid-template-columns: repeat(3, 1fr); gap: .5cm; }
   .carnet-card { border: 1px solid #777; box-shadow: none; }
 }
+
+/* Controles del lector QR con cámara */
+.camera-actions { display: flex; flex-wrap: wrap; gap: .65rem; justify-content: center; margin: 1rem 0; }
+.camera-reader { width: 100%; max-width: 420px; margin: 0 auto; overflow: hidden; border-radius: 12px; }
+.camera-reader:empty { display: none; }
+#estadoCamara { text-align: center; }
+@media (max-width: 480px) { .camera-actions button { width: 100%; } }
