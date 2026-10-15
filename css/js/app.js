@@ -320,6 +320,80 @@ function mostrarFilaVaciaCarnets(container) {
   container.appendChild(p);
 }
 
+let lectorQR = null;
+let camaraActiva = false;
+let procesandoQR = false;
+
+async function abrirCamaraQR() {
+  const estado = document.getElementById("estadoCamara");
+  const botonAbrir = document.getElementById("btnAbrirCamara");
+  const botonCerrar = document.getElementById("btnCerrarCamara");
+  const region = document.getElementById("lectorCamara");
+  if (!region || !estado) return;
+  if (!window.isSecureContext) {
+    estado.textContent = "La cámara requiere una conexión segura HTTPS. Abre el sitio publicado que comienza por https://.";
+    return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    estado.textContent = "Este navegador no permite acceder a la cámara. Prueba con Chrome y revisa los permisos del sitio.";
+    return;
+  }
+  if (typeof Html5Qrcode === "undefined") {
+    estado.textContent = "No se cargó el lector QR. Comprueba la conexión a internet y vuelve a cargar la página.";
+    return;
+  }
+  if (camaraActiva) return;
+  botonAbrir.disabled = true;
+  estado.textContent = "Solicitando permiso para usar la cámara…";
+  try {
+    lectorQR = new Html5Qrcode("lectorCamara");
+    await lectorQR.start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: { width: 230, height: 230 }, aspectRatio: 1.0 },
+      async (textoDecodificado) => {
+        if (procesandoQR) return;
+        procesandoQR = true;
+        const codigo = String(textoDecodificado || "").trim();
+        await cerrarCamaraQR(false);
+        registrarAsistencia(codigo);
+        estado.textContent = QR leído: ${codigo}. Pulsa “Abrir cámara” para escanear otro carnet.;
+        procesandoQR = false;
+      },
+      () => {}
+    );
+    camaraActiva = true;
+    botonCerrar.disabled = false;
+    estado.textContent = "Cámara activa. Enfoca el código QR dentro del recuadro.";
+  } catch (error) {
+    console.error("No se pudo abrir la cámara:", error);
+    estado.textContent = "No se pudo abrir la cámara. Permite el acceso en el candado de la barra del navegador y revisa que ninguna otra app esté usando la cámara.";
+    if (lectorQR) {
+      try { await lectorQR.clear(); } catch (_) {}
+      lectorQR = null;
+    }
+    camaraActiva = false;
+    botonAbrir.disabled = false;
+    botonCerrar.disabled = true;
+  }
+}
+
+async function cerrarCamaraQR(actualizarMensaje = true) {
+  const estado = document.getElementById("estadoCamara");
+  const botonAbrir = document.getElementById("btnAbrirCamara");
+  const botonCerrar = document.getElementById("btnCerrarCamara");
+  if (lectorQR) {
+    try {
+      if (camaraActiva) await lectorQR.stop();
+      await lectorQR.clear();
+    } catch (error) { console.warn("El lector ya estaba detenido.", error); }
+  }
+  lectorQR = null;
+  camaraActiva = false;
+  if (botonAbrir) botonAbrir.disabled = false;
+  if (botonCerrar) botonCerrar.disabled = true;
+  if (actualizarMensaje && estado) estado.textContent = "Cámara detenida. Pulsa “Abrir cámara” para volver a escanear.";
+}
+
 function actualizarTodo() {
   actualizarMetricas();
   renderEstudiantes();
@@ -353,6 +427,8 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
+  document.getElementById("btnAbrirCamara")?.addEventListener("click", abrirCamaraQR);
+  document.getElementById("btnCerrarCamara")?.addEventListener("click", () => cerrarCamaraQR());
   document.getElementById("formEstudiante")?.addEventListener("submit", agregarEstudiante);
   document.getElementById("buscarEstudiante")?.addEventListener("input", renderEstudiantes);
 
@@ -385,4 +461,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   actualizarTodo();
+  window.addEventListener("beforeunload", () => {
+    if (lectorQR && camaraActiva) lectorQR.stop().catch(() => {});
+  });
 });
