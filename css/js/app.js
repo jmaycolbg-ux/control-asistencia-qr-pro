@@ -1,364 +1,325 @@
-// ---------- Almacenamiento Local ----------
-const leer = (key) => JSON.parse(localStorage.getItem(key) || "[]");
-const guardar = (key, data) => localStorage.setItem(key, JSON.stringify(data));
+/* Sistema de asistencia QR: datos locales del navegador.
+   Para usar QRCode se carga qrcode.min.js desde CDN en index.html. */
 
-// ---------- Utilidades de Tiempo ----------
-const fechaHoy = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-};
+const CLAVES = { estudiantes: "estudiantes", asistencias: "asistencias" };
 
-const fechaLegible = () => {
-  const d = new Date();
-  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
-};
-
-const horaActual = () => new Date().toLocaleTimeString("es-CO", { hour12: false });
-
-// ---------- Precargar Estudiantes Con Documento Real ----------
-function precargarEstudiantesPorDefecto() {
-  let estudiantes = [
-    { codigo: "1142925222", nombre: "Ana Barrios", grado: "11-A" },
-    { codigo: "1062607932", nombre: "Juan Taberas", grado: "11-A" },
-    { codigo: "1062439213", nombre: "Jhon Buelvas", grado: "11-B" }
-  ];
-  guardar("estudiantes", estudiantes);
+function leer(key) {
+  try {
+    const valor = JSON.parse(localStorage.getItem(key) || "[]");
+    return Array.isArray(valor) ? valor : [];
+  } catch (error) {
+    console.error(No se pudo leer ${key} desde localStorage., error);
+    return [];
+  }
 }
 
-// ---------- Inicialización General al Cargar el DOM ----------
-document.addEventListener("DOMContentLoaded", () => {
-  
-  // Cargar siempre los estudiantes actualizados
-  precargarEstudiantesPorDefecto();
+function guardar(key, data) {
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+    return true;
+  } catch (error) {
+    alert("No se pudo guardar la información en este navegador. Compruebe el espacio disponible.");
+    console.error(error);
+    return false;
+  }
+}
 
-  // Asignar fecha por defecto
-  const elMetricFecha = document.getElementById("metricFecha");
-  if (elMetricFecha) elMetricFecha.textContent = fechaLegible();
-  
-  const filtroFecha = document.getElementById("filtroFecha");
-  if (filtroFecha) filtroFecha.value = fechaHoy();
+const fechaHoy = () => {
+  const d = new Date();
+  return ${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")};
+};
+const fechaLegible = (fecha = fechaHoy()) => {
+  const [y, m, d] = fecha.split("-");
+  return ${d}/${m}/${y};
+};
+const horaActual = () => new Date().toLocaleTimeString("es-CO", { hour12: false });
 
-  // ---------- Navegación por Pestañas (Tabs) ----------
-  const tabBtns = document.querySelectorAll(".tab-btn");
-  const panelSecciones = document.querySelectorAll(".panel-seccion");
-
-  tabBtns.forEach(btn => {
-    btn.addEventListener("click", () => {
-      tabBtns.forEach(b => b.classList.remove("activo"));
-      panelSecciones.forEach(s => s.classList.remove("activo"));
-
-      btn.classList.add("activo");
-      const targetId = btn.getAttribute("data-target");
-      const targetEl = document.getElementById(targetId);
-      if (targetEl) targetEl.classList.add("activo");
-    });
-  });
-
-  // ---------- Botón Agregar Estudiante ----------
-  const btnAgregar = document.getElementById("btnAgregar");
-  if (btnAgregar) {
-    btnAgregar.addEventListener("click", agregarEstudiante);
+function inicializarDatos() {
+  const estudiantesGuardados = localStorage.getItem(CLAVES.estudiantes);
+  if (estudiantesGuardados === null) {
+    guardar(CLAVES.estudiantes, [
+      { codigo: "EST-0001", nombre: "Estudiante de ejemplo 1", grado: "11-A" },
+      { codigo: "EST-0002", nombre: "Estudiante de ejemplo 2", grado: "11-A" },
+      { codigo: "EST-0003", nombre: "Estudiante de ejemplo 3", grado: "11-B" }
+    ]);
+    return;
   }
 
-  // ---------- Filtro y Búsqueda ----------
-  if (filtroFecha) {
-    filtroFecha.addEventListener("change", renderAsistencias);
+  /* Sustituye únicamente los antiguos datos de ejemplo que contenían números
+     con apariencia de documento por ejemplos ficticios; conserva los demás. */
+  const estudiantes = leer(CLAVES.estudiantes);
+  const antiguos = new Set(["1142925222", "1062607932", "1062439213"]);
+  if (estudiantes.some(e => antiguos.has(String(e.codigo)))) {
+    const seguros = estudiantes.filter(e => !antiguos.has(String(e.codigo)));
+    seguros.push(
+      { codigo: "EST-0001", nombre: "Estudiante de ejemplo 1", grado: "11-A" },
+      { codigo: "EST-0002", nombre: "Estudiante de ejemplo 2", grado: "11-A" },
+      { codigo: "EST-0003", nombre: "Estudiante de ejemplo 3", grado: "11-B" }
+    );
+    guardar(CLAVES.estudiantes, seguros);
   }
+  if (localStorage.getItem(CLAVES.asistencias) === null) guardar(CLAVES.asistencias, []);
+}
 
-  const buscarEstudiante = document.getElementById("buscarEstudiante");
-  if (buscarEstudiante) {
-    buscarEstudiante.addEventListener("input", renderEstudiantes);
+function crearCelda(texto, negrita = false) {
+  const td = document.createElement("td");
+  if (negrita) {
+    const strong = document.createElement("strong");
+    strong.textContent = texto ?? "";
+    td.appendChild(strong);
+  } else {
+    td.textContent = texto ?? "";
   }
+  return td;
+}
 
-  // ---------- Botones de Exportación CSV ----------
-  const btnExportarHoy = document.getElementById("btnExportarHoy");
-  if (btnExportarHoy) {
-    btnExportarHoy.addEventListener("click", () => {
-      const hoy = filtroFecha ? filtroFecha.value : fechaHoy();
-      const lista = leer("asistencias").filter(a => a.fecha === hoy);
-      exportarCSV(lista, `Asistencias_${hoy}`);
-    });
-  }
+function mostrarFilaVacia(tbody, mensaje, columnas) {
+  const tr = document.createElement("tr");
+  const td = document.createElement("td");
+  td.colSpan = columnas;
+  td.className = "empty-row";
+  td.textContent = mensaje;
+  tr.appendChild(td);
+  tbody.appendChild(tr);
+}
 
-  const btnExportarTodo = document.getElementById("btnExportarTodo");
-  if (btnExportarTodo) {
-    btnExportarTodo.addEventListener("click", () => {
-      exportarCSV(leer("asistencias"), "Historial_General_Asistencia");
-    });
-  }
-
-  // ---------- Lector / Input de Código ----------
-  const inputLector = document.getElementById("inputLector");
-  if (inputLector) {
-    inputLector.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        const cod = inputLector.value.trim().toUpperCase();
-        inputLector.value = "";
-        if (cod) registrarAsistencia(cod);
-      }
-    });
-  }
-
-  // Cargar tablas y estadísticas iniciales
-  actualizarTodo();
-});
-
-// ---------- Reproductor de Audio Sintético ----------
 function reproducirSonido(tipo) {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);
     gain.connect(ctx.destination);
-
-    if (tipo === 'exito') {
-      osc.frequency.value = 880;
-      gain.gain.setValueAtTime(0.1, ctx.currentTime);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.15);
-    } else {
-      osc.frequency.value = 220;
-      gain.gain.setValueAtTime(0.15, ctx.currentTime);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.3);
-    }
-  } catch (e) {}
+    osc.frequency.value = tipo === "exito" ? 880 : 220;
+    gain.gain.setValueAtTime(tipo === "exito" ? 0.08 : 0.1, ctx.currentTime);
+    osc.start();
+    osc.stop(ctx.currentTime + (tipo === "exito" ? 0.13 : 0.25));
+    osc.onended = () => ctx.close();
+  } catch (_) { /* El sonido es opcional; no afecta el registro. */ }
 }
 
-// ---------- Métricas ----------
+function mostrarEstado(tipo, icono, titulo, lineas) {
+  const card = document.getElementById("statusCard");
+  if (!card) return;
+  card.replaceChildren();
+  card.className = status-display ${tipo};
+  const icon = document.createElement("div");
+  icon.className = "status-icon-big";
+  icon.textContent = icono;
+  const h4 = document.createElement("h4");
+  h4.textContent = titulo;
+  card.append(icon, h4);
+  lineas.forEach(linea => {
+    const p = document.createElement("p");
+    p.textContent = linea;
+    card.appendChild(p);
+  });
+}
+
 function actualizarMetricas() {
-  const estudiantes = leer("estudiantes");
-  const asistencias = leer("asistencias");
-  const hoy = fechaHoy();
-
-  const totalEst = document.getElementById("metricTotalEst");
-  const presHoy = document.getElementById("metricPresentes");
-
-  if (totalEst) totalEst.textContent = estudiantes.length;
-  if (presHoy) presHoy.textContent = asistencias.filter(a => a.fecha === hoy).length;
+  const estudiantes = leer(CLAVES.estudiantes);
+  const asistenciasHoy = leer(CLAVES.asistencias).filter(a => a.fecha === fechaHoy());
+  const total = document.getElementById("metricTotalEst");
+  const presentes = document.getElementById("metricPresentes");
+  const fecha = document.getElementById("metricFecha");
+  if (total) total.textContent = estudiantes.length;
+  if (presentes) presentes.textContent = asistenciasHoy.length;
+  if (fecha) fecha.textContent = fechaLegible();
 }
 
-// ---------- Gestión de Estudiantes ----------
-function agregarEstudiante() {
+function agregarEstudiante(evento) {
+  if (evento) evento.preventDefault();
   const codigoInput = document.getElementById("codigo");
   const nombreInput = document.getElementById("nombre");
   const gradoInput = document.getElementById("grado");
-
-  const codigo = codigoInput ? codigoInput.value.trim().toUpperCase() : "";
-  const nombre = nombreInput ? nombreInput.value.trim() : "";
-  const grado = gradoInput ? gradoInput.value.trim() : "";
+  const codigo = codigoInput.value.trim().toUpperCase();
+  const nombre = nombreInput.value.trim();
+  const grado = gradoInput.value.trim();
 
   if (!codigo || !nombre) {
-    alert("Debe rellenar al menos el código y el nombre del estudiante.");
+    alert("Debe escribir el código y el nombre del estudiante.");
     return;
   }
-
-  let estudiantes = leer("estudiantes");
-  if (estudiantes.some(e => e.codigo === codigo)) {
-    alert("Ya existe un alumno registrado con este código.");
+  const estudiantes = leer(CLAVES.estudiantes);
+  if (estudiantes.some(e => String(e.codigo).toUpperCase() === codigo)) {
+    alert("Ya existe un estudiante registrado con ese código.");
+    codigoInput.focus();
     return;
   }
-
   estudiantes.push({ codigo, nombre, grado });
-  guardar("estudiantes", estudiantes);
+  if (!guardar(CLAVES.estudiantes, estudiantes)) return;
 
-  if (codigoInput) codigoInput.value = "";
-  if (nombreInput) nombreInput.value = "";
-  if (gradoInput) gradoInput.value = "";
-
+  document.getElementById("formEstudiante").reset();
   actualizarTodo();
+  mostrarEstado("success", "👤", "Estudiante registrado", [${nombre} · ${codigo}, Grado: ${grado || "No especificado"}]);
   alert("¡Estudiante registrado con éxito!");
 }
 
 function eliminarEstudiante(codigo) {
-  if (confirm(`¿Desea eliminar al estudiante con código ${codigo}?`)) {
-    let estudiantes = leer("estudiantes").filter(e => e.codigo !== codigo);
-    guardar("estudiantes", estudiantes);
-    actualizarTodo();
-  }
+  const estudiantes = leer(CLAVES.estudiantes);
+  const est = estudiantes.find(e => e.codigo === codigo);
+  if (!est) return;
+  if (!confirm(¿Desea eliminar a ${est.nombre} (${codigo})? Los registros históricos de asistencia se conservarán.)) return;
+  guardar(CLAVES.estudiantes, estudiantes.filter(e => e.codigo !== codigo));
+  actualizarTodo();
 }
-
 window.eliminarEstudiante = eliminarEstudiante;
 
 function renderEstudiantes() {
   const tbody = document.getElementById("tablaEstudiantes");
   if (!tbody) return;
-  tbody.innerHTML = "";
-
-  const buscarInput = document.getElementById("buscarEstudiante");
-  const filtro = buscarInput ? buscarInput.value.trim().toLowerCase() : "";
-  
-  const estudiantes = leer("estudiantes").filter(e => 
-    e.nombre.toLowerCase().includes(filtro) || e.codigo.toLowerCase().includes(filtro)
+  tbody.replaceChildren();
+  const filtro = (document.getElementById("buscarEstudiante")?.value || "").trim().toLocaleLowerCase("es");
+  const estudiantes = leer(CLAVES.estudiantes).filter(e =>
+    String(e.nombre || "").toLocaleLowerCase("es").includes(filtro) ||
+    String(e.codigo || "").toLocaleLowerCase("es").includes(filtro)
   );
-
-  if (estudiantes.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;">No se encontraron estudiantes registrados.</td></tr>`;
-    return;
-  }
+  if (!estudiantes.length) return mostrarFilaVacia(tbody, "No se encontraron estudiantes registrados.", 4);
 
   estudiantes.forEach(est => {
-    tbody.innerHTML += `
-      <tr>
-        <td><strong>${est.codigo}</strong></td>
-        <td>${est.nombre}</td>
-        <td>${est.grado || 'N/A'}</td>
-        <td><button onclick="eliminarEstudiante('${est.codigo}')" class="btn-danger" type="button">Eliminar</button></td>
-      </tr>
-    `;
+    const tr = document.createElement("tr");
+    tr.append(
+      crearCelda(est.codigo, true),
+      crearCelda(est.nombre),
+      crearCelda(est.grado || "N/A")
+    );
+    const td = document.createElement("td");
+    const boton = document.createElement("button");
+    boton.type = "button";
+    boton.className = "btn-danger";
+    boton.textContent = "Eliminar";
+    boton.addEventListener("click", () => eliminarEstudiante(est.codigo));
+    td.appendChild(boton);
+    tr.appendChild(td);
+    tbody.appendChild(tr);
   });
 }
 
-// ---------- Registro de Asistencia ----------
-function registrarAsistencia(codigo) {
-  const estudiantes = leer("estudiantes");
-  const est = estudiantes.find(e => e.codigo === codigo);
-  const statusCard = document.getElementById("statusCard");
-
+function registrarAsistencia(codigoEntrada) {
+  const codigo = String(codigoEntrada || "").trim().toUpperCase();
+  if (!codigo) return;
+  const est = leer(CLAVES.estudiantes).find(e => String(e.codigo).toUpperCase() === codigo);
   if (!est) {
-    reproducirSonido('error');
-    if (statusCard) {
-      statusCard.className = "status-display error";
-      statusCard.innerHTML = `
-        <div class="status-icon-big">❌</div>
-        <h4>Código No Encontrado</h4>
-        <p>El código <strong>${codigo}</strong> no pertenece a ningún alumno registrado.</p>
-      `;
-    }
+    reproducirSonido("error");
+    mostrarEstado("error", "❌", "Código no encontrado", [El código ${codigo} no pertenece a un estudiante registrado.]);
     return;
   }
 
-  let asistencias = leer("asistencias");
+  const asistencias = leer(CLAVES.asistencias);
   const hoy = fechaHoy();
-
-  if (asistencias.some(a => a.codigo === codigo && a.fecha === hoy)) {
-    reproducirSonido('error');
-    if (statusCard) {
-      statusCard.className = "status-display warning";
-      statusCard.innerHTML = `
-        <div class="status-icon-big">⚠️</div>
-        <h4>Acceso Duplicado</h4>
-        <p><strong>${est.nombre}</strong><br>Ya registró su ingreso el día de hoy.</p>
-      `;
-    }
+  if (asistencias.some(a => String(a.codigo).toUpperCase() === codigo && a.fecha === hoy)) {
+    reproducirSonido("error");
+    mostrarEstado("warning", "⚠️", "Asistencia duplicada", [${est.nombre} ya tiene asistencia registrada hoy.]);
     return;
   }
 
   const hora = horaActual();
-  asistencias.push({ codigo, nombre: est.nombre, fecha: hoy, hora });
-  guardar("asistencias", asistencias);
-
-  reproducirSonido('exito');
-  if (statusCard) {
-    statusCard.className = "status-display success";
-    statusCard.innerHTML = `
-      <div class="status-icon-big">✅</div>
-      <h4>Asistencia Registrada</h4>
-      <p><strong>${est.nombre}</strong><br>Grado: ${est.grado || 'N/A'}<br>Hora: ${hora}</p>
-    `;
-  }
-
+  asistencias.push({ codigo: est.codigo, nombre: est.nombre, fecha: hoy, hora });
+  if (!guardar(CLAVES.asistencias, asistencias)) return;
+  reproducirSonido("exito");
+  mostrarEstado("success", "✅", "Asistencia registrada", [${est.nombre}, Grado: ${est.grado || "No especificado"}, Fecha: ${fechaLegible(hoy)}, Hora: ${hora}]);
   actualizarTodo();
 }
 
-// ---------- Tablas de Asistencia e Historial ----------
 function renderAsistencias() {
   const tbody = document.getElementById("tablaAsistencia");
   if (!tbody) return;
-  tbody.innerHTML = "";
-  
-  const filtroFecha = document.getElementById("filtroFecha");
-  const fechaFiltro = filtroFecha ? filtroFecha.value : fechaHoy();
-  const lista = leer("asistencias").filter(a => a.fecha === fechaFiltro);
-
-  if (lista.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;">Sin asistencias registradas para esta fecha.</td></tr>`;
-    return;
-  }
-
+  tbody.replaceChildren();
+  const fechaFiltro = document.getElementById("filtroFecha")?.value || fechaHoy();
+  const lista = leer(CLAVES.asistencias)
+    .filter(a => a.fecha === fechaFiltro)
+    .sort((a, b) => String(a.hora).localeCompare(String(b.hora)));
+  if (!lista.length) return mostrarFilaVacia(tbody, "Sin asistencias registradas para esta fecha.", 4);
   lista.forEach(item => {
-    tbody.innerHTML += `
-      <tr>
-        <td><strong>${item.codigo}</strong></td>
-        <td>${item.nombre}</td>
-        <td>${item.fecha}</td>
-        <td>${item.hora}</td>
-      </tr>
-    `;
+    const tr = document.createElement("tr");
+    tr.append(crearCelda(item.codigo, true), crearCelda(item.nombre), crearCelda(item.fecha), crearCelda(item.hora));
+    tbody.appendChild(tr);
   });
 }
 
 function renderHistorial() {
   const tbody = document.getElementById("tablaHistorial");
   if (!tbody) return;
-  tbody.innerHTML = "";
-  const historial = leer("asistencias");
-
-  if (historial.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;">Historial vacío.</td></tr>`;
-    return;
-  }
-
-  historial.slice().reverse().forEach(item => {
-    tbody.innerHTML += `
-      <tr>
-        <td><strong>${item.codigo}</strong></td>
-        <td>${item.nombre}</td>
-        <td>${item.fecha}</td>
-        <td>${item.hora}</td>
-      </tr>
-    `;
+  tbody.replaceChildren();
+  const fechaFiltro = document.getElementById("filtroHistorial")?.value || "";
+  const historial = leer(CLAVES.asistencias)
+    .filter(a => !fechaFiltro || a.fecha === fechaFiltro)
+    .slice()
+    .sort((a, b) => ${b.fecha} ${b.hora}.localeCompare(${a.fecha} ${a.hora}));
+  if (!historial.length) return mostrarFilaVacia(tbody, "No hay registros para la consulta seleccionada.", 4);
+  historial.forEach(item => {
+    const tr = document.createElement("tr");
+    tr.append(crearCelda(item.codigo, true), crearCelda(item.nombre), crearCelda(item.fecha), crearCelda(item.hora));
+    tbody.appendChild(tr);
   });
 }
 
-// ---------- Exportación a CSV ----------
+function escaparCSV(valor) {
+  let texto = String(valor ?? "");
+  if (/^[=+\-@\t\r]/.test(texto)) texto = "'" + texto;
+  return "${texto.replace(/"/g, '""')}";
+}
+
 function exportarCSV(datos, nombreArchivo) {
-  if (datos.length === 0) {
+  if (!datos.length) {
     alert("No hay datos disponibles para exportar.");
     return;
   }
-
-  let csvContent = "\uFEFFCódigo,Nombre,Fecha,Hora\n";
-  datos.forEach(row => {
-    csvContent += `"${row.codigo}","${row.nombre}","${row.fecha}","${row.hora}"\n`;
-  });
-
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const filas = [["Código", "Nombre", "Fecha", "Hora"], ...datos.map(a => [a.codigo, a.nombre, a.fecha, a.hora])];
+  const contenido = "\uFEFF" + filas.map(fila => fila.map(escaparCSV).join(",")).join("\r\n");
+  const blob = new Blob([contenido], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
-  link.setAttribute("href", url);
-  link.setAttribute("download", `${nombreArchivo}.csv`);
+  link.href = url;
+  link.download = ${nombreArchivo}.csv;
   document.body.appendChild(link);
   link.click();
-  document.body.removeChild(link);
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// ---------- Renderizar Carnets ----------
 function renderCarnets() {
   const container = document.getElementById("gridCarnets");
   if (!container) return;
-  container.innerHTML = "";
-  const estudiantes = leer("estudiantes");
-
-  if (estudiantes.length === 0) {
-    container.innerHTML = `<p style="grid-column: 1/-1; text-align:center;">No hay alumnos registrados para mostrar carnets.</p>`;
-    return;
-  }
+  container.replaceChildren();
+  const estudiantes = leer(CLAVES.estudiantes);
+  if (!estudiantes.length) return mostrarFilaVaciaCarnets(container);
 
   estudiantes.forEach(est => {
-    const div = document.createElement("div");
-    div.className = "carnet-card";
-    div.innerHTML = `
-      <h5>${est.nombre}</h5>
-      <p>${est.grado || 'Sin curso'}</p>
-      <div class="codigo-badge-card">${est.codigo}</div>
-    `;
-    container.appendChild(div);
+    const card = document.createElement("article");
+    card.className = "carnet-card";
+    const institucion = document.createElement("p");
+    institucion.textContent = "C.I. SOLEDAD VIVES DE JOLY";
+    const nombre = document.createElement("h4");
+    nombre.textContent = est.nombre;
+    const grado = document.createElement("p");
+    grado.textContent = Grado: ${est.grado || "No especificado"};
+    const qr = document.createElement("div");
+    qr.className = "qr-container";
+    qr.setAttribute("aria-label", Código QR para ${est.codigo});
+    const codigo = document.createElement("span");
+    codigo.className = "codigo-badge-card";
+    codigo.textContent = est.codigo;
+    card.append(institucion, nombre, grado, qr, codigo);
+    container.appendChild(card);
+
+    if (typeof QRCode === "function") {
+      new QRCode(qr, { text: String(est.codigo), width: 128, height: 128, colorDark: "#0f172a", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
+    } else {
+      const aviso = document.createElement("p");
+      aviso.textContent = "No se pudo cargar la librería QR. Compruebe la conexión a internet.";
+      qr.appendChild(aviso);
+    }
   });
 }
+function mostrarFilaVaciaCarnets(container) {
+  const p = document.createElement("p");
+  p.textContent = "No hay estudiantes registrados para mostrar carnets.";
+  container.appendChild(p);
+}
 
-// ---------- Sincronización Global ----------
 function actualizarTodo() {
   actualizarMetricas();
   renderEstudiantes();
@@ -366,3 +327,62 @@ function actualizarTodo() {
   renderHistorial();
   renderCarnets();
 }
+
+document.addEventListener("DOMContentLoaded", () => {
+  inicializarDatos();
+
+  const filtroFecha = document.getElementById("filtroFecha");
+  if (filtroFecha) {
+    filtroFecha.value = fechaHoy();
+    filtroFecha.addEventListener("change", renderAsistencias);
+  }
+  const filtroHistorial = document.getElementById("filtroHistorial");
+  if (filtroHistorial) filtroHistorial.addEventListener("change", renderHistorial);
+
+  document.querySelectorAll(".tab-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tab-btn").forEach(b => {
+        b.classList.remove("activo");
+        b.setAttribute("aria-selected", "false");
+      });
+      document.querySelectorAll(".panel-seccion").forEach(panel => panel.classList.remove("activo"));
+      btn.classList.add("activo");
+      btn.setAttribute("aria-selected", "true");
+      const panel = document.getElementById(btn.dataset.target);
+      if (panel) panel.classList.add("activo");
+    });
+  });
+
+  document.getElementById("formEstudiante")?.addEventListener("submit", agregarEstudiante);
+  document.getElementById("buscarEstudiante")?.addEventListener("input", renderEstudiantes);
+
+  document.getElementById("inputLector")?.addEventListener("keydown", event => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const input = event.currentTarget;
+      const codigo = input.value.trim();
+      input.value = "";
+      registrarAsistencia(codigo);
+    }
+  });
+
+  document.getElementById("btnExportarHoy")?.addEventListener("click", () => {
+    const fecha = filtroFecha?.value || fechaHoy();
+    exportarCSV(leer(CLAVES.asistencias).filter(a => a.fecha === fecha), Asistencias_${fecha});
+  });
+  document.getElementById("btnExportarTodo")?.addEventListener("click", () => {
+    const fecha = filtroHistorial?.value || "";
+    const datos = leer(CLAVES.asistencias).filter(a => !fecha || a.fecha === fecha);
+    exportarCSV(datos, fecha ? Historial_Asistencia_${fecha} : "Historial_General_Asistencia");
+  });
+  document.getElementById("btnLimpiarHistorial")?.addEventListener("click", () => {
+    if (filtroHistorial) filtroHistorial.value = "";
+    renderHistorial();
+  });
+  document.getElementById("btnImprimirCarnets")?.addEventListener("click", () => {
+    document.querySelector('.tab-btn[data-target="tab-carnets"]')?.click();
+    window.print();
+  });
+
+  actualizarTodo();
+});
