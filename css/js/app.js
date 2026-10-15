@@ -15,10 +15,23 @@ const fechaLegible = () => {
 
 const horaActual = () => new Date().toLocaleTimeString("es-CO", { hour12: false });
 
+// ---------- Precargar Estudiantes Con Documento Real ----------
+function precargarEstudiantesPorDefecto() {
+  let estudiantes = [
+    { codigo: "1142925222", nombre: "Ana Barrios", grado: "11-A" },
+    { codigo: "1062607932", nombre: "Juan Taberas", grado: "11-A" },
+    { codigo: "1062439213", nombre: "Jhon Buelvas", grado: "11-B" }
+  ];
+  guardar("estudiantes", estudiantes);
+}
+
 // ---------- Inicialización General al Cargar el DOM ----------
 document.addEventListener("DOMContentLoaded", () => {
   
-  // Asignar fechas por defecto
+  // Cargar siempre los estudiantes actualizados
+  precargarEstudiantesPorDefecto();
+
+  // Asignar fecha por defecto
   const elMetricFecha = document.getElementById("metricFecha");
   if (elMetricFecha) elMetricFecha.textContent = fechaLegible();
   
@@ -166,7 +179,7 @@ function eliminarEstudiante(codigo) {
   }
 }
 
-window.eliminarEstudiante = eliminarEstudiante; // Exponer globalmente
+window.eliminarEstudiante = eliminarEstudiante;
 
 function renderEstudiantes() {
   const tbody = document.getElementById("tablaEstudiantes");
